@@ -179,7 +179,6 @@ async function playNextSong(voiceChannel, guildId, interaction) {
 
         player.on(AudioPlayerStatus.Idle, () => {
             console.log('Finished playing. Moving to the next song.');
-            isPlaying = true;
             playNextSong(voiceChannel, guildId, interaction); // Play the next song
         });
 
