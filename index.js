@@ -1,4 +1,5 @@
-const { Client, Collection, GatewayIntentBits, IntentsBitField, ActionRowBuilder, StringSelectMenuBuilder, Partials } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, IntentsBitField, ActionRowBuilder, StringSelectMenuBuilder, Partials, ButtonBuilder } = require('discord.js');
+const { getVoiceConnection } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
 const getGPT4js = require("gpt4js");
@@ -22,6 +23,7 @@ const client = new Client({
 const welcome = require('./welcome.js');
 const goodbye = require('./goodbye.js');
 require("./deploy.js");
+require("./keepalive.js");
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -61,141 +63,67 @@ for (const file of eventFiles) {
 	}
 }
 
-// client.on('messageCreate', async (msg) => {
-//     try {
-//         // Check if the message starts with the specific phrase
-//         if (msg.content.toLowerCase().startsWith("kupal ka ba tph")) {
-//             let replyMessage = '';
-            
-//             // Check if the message is a reply
-//             if (msg.reference) {
-//                 // Fetch the replied-to message
-//                 const repliedTo = await msg.channel.messages.fetch(msg.reference.messageId);
-                
-//                 replyMessage = `Tinatanong mo '${repliedTo.content}'? Bat hindi mo muna isipin yan ${msg.author.toString()}?`;
-//             } else {
-//                 replyMessage = `Bat ako tinatanong mo, ${msg.author.toString()}? Tanungin mo sarili mo!`;
-//             }
-            
-//             // Reply with the appropriate response
-//             msg.reply(replyMessage);
-//         }
-//     } catch (err) {
-//         console.error('An error occurred:', err);
-//     }
-// });
-
-// GPT-4 Chat Function
-async function startChatGPT4(messages, options = { provider: "Nextway", model: "gpt-4o-free" }) {
-    try {
-		
-        const GPT4js = await getGPT4js();
-        const provider = GPT4js.createProvider(options.provider);
-
-        const text = await provider.chatCompletion(messages, options, (data) => {
-            console.log("Streaming data:", data);
-        });
-
-        return text;
-    } catch (error) {
-        console.error("Error in chatCompletion:", error);
-        return "An error occurred while communicating with the GPT-4 provider.";
-    }
-}
-
-// Discord Command Handler
-client.on('messageCreate', async (message) => {
-    // Ignore bot messages
-    if (message.author.bot) return;
-
-    // Command: !ai
-    if (message.content.toLowerCase().startsWith('!ai')) {
-        const query = message.content.slice(4).trim(); // Remove "!ai" from the message
-        const messages = [{ role: "user", content: query }];
-
-        if (!query) {
-            message.reply('Please provide a message or query for GPT-4!');
-            return;
-        }
-
-        try {
-			await message.channel.sendTyping();
-
-            // Get GPT-4 response
-            const response = await startChatGPT4(messages);
-
-            // Reply to the user with the GPT-4 response
-            message.reply(response);
-        } catch (err) {
-            console.error('Error processing !ai command:', err);
-            message.reply('Sorry, I encountered an error processing your request.');
-        }
-    }
-});
-
-
-
+let isPaused = false;
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.isButton()) return;
 
-  if (interaction.customId === 'reaction_roles') {
-      const selectedRoleId = interaction.values[0]; 
-      const member = interaction.member;
+    const { customId } = interaction;
 
-
-      const allRoleIds = ['1309992669593997332', '1309992791585325076', '1309992893125103706'];
-
-      try {
-         
-          const rolesToRemove = allRoleIds.filter((roleId) => roleId !== selectedRoleId);
-          await member.roles.remove(rolesToRemove);
-
-
-          if (!member.roles.cache.has(selectedRoleId)) {
-              await member.roles.add(selectedRoleId);
-          }
-
-          await interaction.reply({
-              content: `You now have the role: <@&${selectedRoleId}>`,
-              ephemeral: true,
-          });
-      } catch (error) {
-          console.error('Error managing roles:', error);
-          await interaction.reply({
-              content: 'An error occurred while updating your roles. Please try again.',
-              ephemeral: true,
-          });
-      }
-  }
+    if (customId === 'pause') {
+        if (isPaused) {
+            global.currentPlayer.unpause();
+            isPaused = false;
+            await interaction.update({
+                content: 'The song has been resumed.',
+                components: [createButtonRow()],
+            });
+        } else {
+            global.currentPlayer.pause();
+            isPaused = true;
+            await interaction.update({
+                content: 'The song has been paused.',
+                components: [createButtonRow()],
+            });
+        }
+    }
+    else if (customId === 'stop') {
+        const connection = getVoiceConnection(interaction.guildId);
+        if (connection) {
+            connection.destroy();
+            currentPlayer = null;
+            queue = [];
+            await interaction.update({
+                content: '🎤 Bot has disconnected from the voice channel.',
+                embeds: [],
+                components: [],
+            });
+        }
+    }
+    if (interaction.customId === 'skip') {
+        if (currentPlayer) {
+            currentPlayer.stop(); // Skip the current song
+            interaction.update({ content: '⏭ Skipping to the next song...', components: [] });
+        }
+    }
 });
 
-
-client.on('messageCreate', async (message) => {
-  if (message.content === '!reactionrole') {
-      const roles = [
-          { label: 'Luzon', value: '1309992669593997332' },
-          { label: 'Visayas', value: '1309992791585325076' },
-          { label: 'Mindanao', value: '1309992893125103706' },
-      ];
-
-      const row = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-              .setCustomId('reaction_roles')
-              .setPlaceholder('Select a role')
-              .addOptions(
-                  roles.map((role) => ({
-                      label: role.label,
-                      value: role.value,
-                  }))
-              )
-      );
-
-      await message.channel.send({
-          content: 'Where you at:',
-          components: [row],
-      });
-  }
-});
+// Helper function to create the button row
+function createButtonRow() {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('stop')
+            .setLabel('Stop')
+            .setStyle('Danger'), 
+        new ButtonBuilder()
+            .setCustomId('pause')
+            .setLabel(isPaused ? 'Resume' : 'Pause')
+            .setStyle(isPaused ? 'Primary' : 'Secondary'),
+        new ButtonBuilder()
+            .setCustomId('skip')
+            .setLabel('Skip')
+            .setStyle('Primary') 
+    );
+}
 
 
 client.login(process.env.TOKEN);
