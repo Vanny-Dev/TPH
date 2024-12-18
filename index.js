@@ -20,16 +20,16 @@ const client = new Client({
 
 
 // const config = require('./config.json');
-const welcome = require('./welcome.js');
-const goodbye = require('./goodbye.js');
+//const welcome = require('./welcome.js');
+//const goodbye = require('./goodbye.js');
 require("./deploy.js");
 require("./keepalive.js");
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
-    welcome(client);
-    goodbye(client);
+    //welcome(client);
+    //goodbye(client);
 });
 
 client.commands = new Collection();

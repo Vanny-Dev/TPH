@@ -1,4 +1,11 @@
 # Ignore node_modules and .env
 node_modules
 pangungupal.js
+package-lock.json
 .env
+a
+b
+qwe.js
+test.js
+v
+queueData.json
